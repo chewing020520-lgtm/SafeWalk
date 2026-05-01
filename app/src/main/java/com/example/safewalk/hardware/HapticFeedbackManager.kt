@@ -1,13 +1,11 @@
 package com.example.safewalk.hardware
 
-package com.safewalk.feedback
-
 import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.speech.tts.TextToSpeech
-import com.safewalk.fusion.WalkingState
+import com.example.safewalk.fusion.WalkingState
 import java.util.Locale
 
 class HapticFeedbackManager(context: Context) {
@@ -20,14 +18,14 @@ class HapticFeedbackManager(context: Context) {
         context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
     }
 
-    private val tts = TextToSpeech(context) { status ->
+    private val tts: TextToSpeech = TextToSpeech(context) { status ->
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.KOREAN
         }
     }
 
     private var lastFeedbackTime = 0L
-    private val FEEDBACK_COOLDOWN_MS = 3000L  // 3초 쿨다운
+    private val FEEDBACK_COOLDOWN_MS = 3000L
 
     fun provideFeedback(state: WalkingState, severityDeg: Float) {
         val now = System.currentTimeMillis()
@@ -36,17 +34,15 @@ class HapticFeedbackManager(context: Context) {
 
         when (state) {
             WalkingState.DRIFTING_LEFT -> {
-                // 왼쪽 쏠림: 왼쪽 짧게 2회 진동
                 vibratePattern(longArrayOf(0, 100, 100, 100))
                 speak("오른쪽으로 방향을 조금 틀어주세요")
             }
             WalkingState.DRIFTING_RIGHT -> {
-                // 오른쪽 쏠림: 오른쪽 긴 진동 1회
                 vibratePattern(longArrayOf(0, 300))
                 speak("왼쪽으로 방향을 조금 틀어주세요")
             }
-            WalkingState.ALIGNED -> { /* 피드백 없음 */ }
-            WalkingState.UNCERTAIN -> { /* 피드백 없음 */ }
+            WalkingState.ALIGNED -> { }
+            WalkingState.UNCERTAIN -> { }
         }
     }
 

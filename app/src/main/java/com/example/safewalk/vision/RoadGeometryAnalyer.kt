@@ -1,25 +1,22 @@
 package com.example.safewalk.vision
 
-package com.safewalk.vision
-
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import kotlin.math.*
 
 data class AlignmentResult(
-    val offsetAngleDeg: Float,    // 화면 Y축 대비 도로선 각도 편차
-    val vanishingPointX: Float,   // 소실점 X 위치 (0.0=왼쪽, 1.0=오른쪽)
-    val vanishingPointY: Float,   // 소실점 Y 위치
-    val confidence: Float,        // 검출 신뢰도 (0.0~1.0)
-    val isAligned: Boolean        // 정렬 여부
+    val offsetAngleDeg: Float,
+    val vanishingPointX: Float,
+    val vanishingPointY: Float,
+    val confidence: Float,
+    val isAligned: Boolean
 )
 
 class RoadGeometryAnalyzer(
-    private val alignmentThresholdDeg: Float = 12f,  // 하이퍼파라미터
+    private val alignmentThresholdDeg: Float = 12f,
     private val minConfidence: Float = 0.4f
 ) {
 
-    // ROI: 화면 하단 40% 영역만 분석 (연산 절약)
     private fun extractRoi(frame: Mat): Mat {
         val roiStart = (frame.rows() * 0.6).toInt()
         val roi = Rect(0, roiStart, frame.cols(), frame.rows() - roiStart)
@@ -32,49 +29,38 @@ class RoadGeometryAnalyzer(
         val lines = Mat()
 
         try {
-            // 1. 전처리
             Imgproc.cvtColor(rgbaFrame, gray, Imgproc.COLOR_RGBA2GRAY)
             val roi = extractRoi(gray)
 
-            // 가우시안 블러로 노이즈 제거
             Imgproc.GaussianBlur(roi, roi, Size(5.0, 5.0), 0.0)
 
-            // Canny 엣지 검출
             Imgproc.Canny(roi, edges, 50.0, 150.0)
 
-            // 2. 확률적 허프 변환
-            // threshold=80: 최소 투표 수
-            // minLineLength=60: 최소 선 길이 (px)
-            // maxLineGap=20: 선 사이 최대 간격
             Imgproc.HoughLinesP(
-                edges, lines,
-                rho = 1.0,
-                theta = Math.PI / 180,
-                threshold = 80,
-                minLineLength = 60.0,
-                maxLineGap = 20.0
+                edges,
+                lines,
+                1.0,
+                Math.PI / 180,
+                80,
+                60.0,
+                20.0
             )
 
             if (lines.rows() == 0) {
                 return AlignmentResult(0f, 0.5f, 0.5f, 0f, true)
             }
 
-            // 3. 수직에 가까운 선만 필터링 (±30° 이내)
             val verticalLines = filterVerticalLines(lines)
             if (verticalLines.isEmpty()) {
                 return AlignmentResult(0f, 0.5f, 0.5f, 0f, true)
             }
 
-            // 4. 평균 기울기 각도 계산
             val avgAngle = computeAverageAngle(verticalLines)
 
-            // 화면 Y축(90°) 대비 편차
             val offsetAngle = avgAngle - 90f
 
-            // 5. 소실점 추정
             val (vpX, vpY) = estimateVanishingPoint(verticalLines, rgbaFrame)
 
-            // 신뢰도: 검출된 선 수에 비례
             val confidence = min(1f, verticalLines.size / 10f)
 
             val isAligned = abs(offsetAngle) < alignmentThresholdDeg
@@ -88,7 +74,9 @@ class RoadGeometryAnalyzer(
                 isAligned = isAligned
             )
         } finally {
-            gray.release(); edges.release(); lines.release()
+            gray.release()
+            edges.release()
+            lines.release()
         }
     }
 
@@ -99,7 +87,6 @@ class RoadGeometryAnalyzer(
             val dx = line[2] - line[0]
             val dy = line[3] - line[1]
             val angleDeg = Math.toDegrees(atan2(dy, dx)).toFloat()
-            // 수직선: 60°~120° 범위
             if (abs(angleDeg) in 60f..120f) {
                 result.add(floatArrayOf(
                     line[0].toFloat(), line[1].toFloat(),
@@ -112,7 +99,6 @@ class RoadGeometryAnalyzer(
     }
 
     private fun computeAverageAngle(lines: List<FloatArray>): Float {
-        // 가중 평균: 선 길이로 가중
         var weightedSum = 0.0
         var totalWeight = 0.0
         lines.forEach { line ->
@@ -125,10 +111,6 @@ class RoadGeometryAnalyzer(
         return if (totalWeight > 0) (weightedSum / totalWeight).toFloat() else 90f
     }
 
-    /**
-     * 소실점: 선들의 교점 클러스터 중심
-     * 간략화: 연장선들의 X 교점 평균을 소실점 X로 사용
-     */
     private fun estimateVanishingPoint(
         lines: List<FloatArray>,
         frame: Mat
@@ -150,7 +132,6 @@ class RoadGeometryAnalyzer(
             frame.cols() / 2f
         }
 
-        // Y는 화면 상단 20% 근처로 가정 (원근법상 소실점 위치)
         val vpY = frame.rows() * 0.15f
         return Pair(vpX, vpY)
     }
